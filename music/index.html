@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="robots" content="noindex"> <!-- 限定公開用に検索避けを設定 -->
+    <meta name="robots" content="noindex"> <!-- クローラー避け -->
     <title>Artist Discography Tracker</title>
 
     <!-- Tailwind CSS -->
@@ -32,15 +32,8 @@
     <!-- Babel (for JSX) -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 
-    <!-- Axios -->
-    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
     <!-- Fetch JSONP (For iTunes API CORS support) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/fetch-jsonp/1.1.3/fetch-jsonp.min.js"></script>
-    <!-- Fetch JSONP (For iTunes API CORS support) -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/fetch-jsonp/1.1.3/fetch-jsonp.min.js"></script>
-
-    <!-- Lucide Icons -->
-    <script src="https://unpkg.com/lucide@latest"></script>
 
     <style>
         body {
@@ -126,28 +119,7 @@
 
         // --- Components ---
 
-        const Icon = ({ name, size = 20, className = "" }) => {
-            // Lucide icons are injected globally, but usually handled via creating elements.
-            // For simple usage in React without the proper React library wrapper, we can try to render svg manually or use a wrapper.
-            // However, Lucide's script creates `lucide` global. `lucide.createIcons()` scans DOM.
-            // In React, it's better to use `lucide-react` but we don't have it.
-            // Fallback: We will rely on simple SVG rendering or just text if icon missing, 
-            // BUT simpler: Lucide in browser usually works by `lucide.createIcons()` call after render.
-            // Let's implement a Effect that calls createIcons.
-
-            useEffect(() => {
-                if (window.lucide) {
-                    window.lucide.createIcons();
-                }
-            });
-
-            return <i data-lucide={name} className={className} style={{ width: size, height: size }}></i>;
-        };
-
-        // Since `lucide.createIcons` replaces <i> tags with SVGs, React might lose track of them upon re-render.
-        // A better approach for CDN React + Lucide is using `dangerouslySetInnerHTML` with the SVG string if possible,
-        // OR simply re-running createIcons aggressively.
-        // Let's try a safer SVG map approach for critical icons to avoid flicker/VDOM issues.
+        // SVG Icons
         const Icons = {
             Search: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>,
             Check: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>,
@@ -160,7 +132,6 @@
 
         const ProgressBar = ({ total, checked }) => {
             const percentage = total === 0 ? 0 : Math.round((checked / total) * 100);
-
             return (
                 <div className="fixed top-0 left-0 w-full z-50 bg-card/90 backdrop-blur-sm border-b border-slate-700 shadow-lg transition-all duration-300">
                     <div className="max-w-5xl mx-auto px-4 py-3 flex items-center gap-4">
@@ -246,8 +217,8 @@
                 <div
                     onClick={onToggle}
                     className={`group flex items-center justify-between p-3 rounded-lg border transition-all cursor-pointer ${isChecked
-                        ? 'bg-primary/10 border-primary/30'
-                        : 'bg-slate-800/30 border-slate-700/50 hover:bg-slate-800 hover:border-slate-600'
+                            ? 'bg-primary/10 border-primary/30'
+                            : 'bg-slate-800/30 border-slate-700/50 hover:bg-slate-800 hover:border-slate-600'
                         }`}
                 >
                     <div className="flex items-center gap-3 overflow-hidden">
@@ -266,7 +237,6 @@
         };
 
         const AlbumCard = ({ collection, tracks, checks, onToggleTrack }) => {
-            // Sort tracks by track number
             const sortedTracks = useMemo(() => {
                 return [...tracks].sort((a, b) => a.trackNumber - b.trackNumber);
             }, [tracks]);
@@ -298,7 +268,6 @@
                             <p className="text-sm text-slate-400">{sortedTracks.length} Songs</p>
                         </div>
                     </div>
-
                     <div className="p-3 grid gap-2">
                         {sortedTracks.map(track => (
                             <TrackItem
@@ -315,7 +284,8 @@
 
         const App = () => {
             const [data, setData] = useState({ artist: null, albums: {}, singles: [] });
-            const [items, setItems] = useState([]); // Raw items
+            // items unused in rendering but used for progress calc
+            const [items, setItems] = useState([]);
             const [checkedItems, setCheckedItems] = useLocalStorage('music-tracker-checks', {});
             const [favorites, setFavorites] = useLocalStorage('music-tracker-favorites', []);
             const [isLoading, setIsLoading] = useState(false);
@@ -324,29 +294,25 @@
             const searchArtist = async (term) => {
                 setIsLoading(true);
                 setError(null);
-                // Clear current data if search term changes significantly, but for better UX, maybe keep old until new loads.
-                // Keeping clean for now.
                 setData({ artist: null, albums: {}, singles: [] });
                 setItems([]);
 
                 try {
-                    // 1. Search for Artist ID first to be precise
-                    const artistRes = await axios.get(`https://itunes.apple.com/search?term=${encodeURIComponent(term)}&entity=musicArtist&limit=1`);
+                    // JSONP search with JP store
+                    const artistRes = await fetchJsonp(`https://itunes.apple.com/search?term=${encodeURIComponent(term)}&entity=musicArtist&limit=5&country=JP&lang=ja_jp`);
+                    const artistData = await artistRes.json();
 
-                    if (artistRes.data.resultCount === 0) {
+                    if (artistData.resultCount === 0) {
                         throw new Error('アーティストが見つかりません');
                     }
 
-                    const artist = artistRes.data.results[0];
+                    const artist = artistData.results[0];
 
-                    // 2. Get all songs by Artist ID
-                    // Lookup API is better for getting all works by artistId
-                    const songsRes = await axios.get(`https://itunes.apple.com/lookup?id=${artist.artistId}&entity=song&limit=200&country=JP`);
+                    const songsRes = await fetchJsonp(`https://itunes.apple.com/lookup?id=${artist.artistId}&entity=song&limit=200&country=JP&lang=ja_jp`);
+                    const songsData = await songsRes.json();
 
-                    // Filter out the artist object itself (wrapperType='artist')
-                    const results = songsRes.data.results.filter(item => item.wrapperType === 'track');
+                    const results = songsData.results.filter(item => item.wrapperType === 'track');
 
-                    // Group by Collection ID
                     const albumsMap = {};
 
                     results.forEach(track => {
@@ -369,7 +335,9 @@
                     setData({ artist, albums: albumsMap });
 
                 } catch (err) {
-                    setError(err.message || 'エラーが発生しました');
+                    console.error(err);
+                    // Detailed error message for debugging
+                    setError(`Error: ${err.message || 'データ取得に失敗しました'}`);
                 } finally {
                     setIsLoading(false);
                 }
@@ -387,22 +355,17 @@
                 });
             };
 
-            // Favorites Logic
             const isFavorite = useMemo(() => {
                 return data.artist && favorites.some(f => f.artistId === data.artist.artistId);
             }, [data.artist, favorites]);
 
             const toggleFavorite = () => {
                 if (!data.artist) return;
-
                 setFavorites(prev => {
                     if (isFavorite) {
                         return prev.filter(f => f.artistId !== data.artist.artistId);
                     } else {
-                        return [...prev, {
-                            artistId: data.artist.artistId,
-                            artistName: data.artist.artistName
-                        }];
+                        return [...prev, { artistId: data.artist.artistId, artistName: data.artist.artistName }];
                     }
                 });
             };
@@ -411,7 +374,6 @@
                 setFavorites(prev => prev.filter(f => f.artistId !== id));
             };
 
-            // Calculate progress for CURRENT searched artist
             const progress = useMemo(() => {
                 if (items.length === 0) return { total: 0, checked: 0 };
                 const currentIds = items.map(i => i.trackId);
@@ -419,7 +381,6 @@
                 return { total: currentIds.length, checked: checkedCount };
             }, [items, checkedItems]);
 
-            // Sort albums by release date (desc)
             const sortedAlbums = useMemo(() => {
                 return Object.values(data.albums).sort((a, b) => {
                     return new Date(b.info.releaseDate) - new Date(a.info.releaseDate);
@@ -427,14 +388,13 @@
             }, [data.albums]);
 
             return (
-                <div className="min-h-screen pb-20 pt-16">
-                    {/* Progress Bar (Always visible if artist loaded) */}
+                <div className="min-h-screen pb-20 pt-16 relative">
                     {data.artist && (
                         <ProgressBar total={progress.total} checked={progress.checked} />
                     )}
 
                     <div className="max-w-5xl mx-auto px-4">
-                        {!data.artist && <div className="h-10"></div>} {/* Spacer */}
+                        {!data.artist && <div className="h-10"></div>}
 
                         <SearchBar
                             onSearch={searchArtist}
@@ -445,7 +405,7 @@
                         />
 
                         {error && (
-                            <div className="text-red-400 text-center bg-red-900/20 p-4 rounded-lg border border-red-900/50 mb-8">
+                            <div className="text-red-400 text-center bg-red-900/20 p-4 rounded-lg border border-red-900/50 mb-8 font-mono text-sm break-all">
                                 {error}
                             </div>
                         )}
@@ -458,10 +418,9 @@
                                         <button
                                             onClick={toggleFavorite}
                                             className={`p-2 rounded-full transition-all ${isFavorite
-                                                ? 'text-yellow-400 bg-yellow-400/10 hover:bg-yellow-400/20'
-                                                : 'text-slate-500 bg-slate-800 hover:text-yellow-400 hover:bg-slate-700'
+                                                    ? 'text-yellow-400 bg-yellow-400/10 hover:bg-yellow-400/20'
+                                                    : 'text-slate-500 bg-slate-800 hover:text-yellow-400 hover:bg-slate-700'
                                                 }`}
-                                            title={isFavorite ? "マイリストから削除" : "マイリストに追加"}
                                         >
                                             <Icons.Star filled={isFavorite} />
                                         </button>
@@ -483,7 +442,6 @@
                             </div>
                         )}
 
-                        {/* Empty State / Intro */}
                         {!data.artist && !isLoading && !error && (
                             <div className="text-center text-slate-600 mt-20">
                                 <Icons.Music />
@@ -492,7 +450,11 @@
                         )}
                     </div>
 
-                    {/* Masonry Layout CSS adjustment for columns */}
+                    {/* Version Indicator for Debugging */}
+                    <div className="fixed bottom-1 right-1 text-[10px] text-slate-700 opacity-50 pointer-events-none">
+                        v1.2 (JSONP Fixed)
+                    </div>
+
                     <style>{`
                         .masonry-grid {
                             column-count: 1;
