@@ -119,7 +119,7 @@
 
         // --- Components ---
 
-        // SVG Icons embedded directly to avoid dependency issues in single file
+        // SVG Icons
         const Icons = {
             Search: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>,
             Check: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>,
@@ -132,7 +132,6 @@
 
         const ProgressBar = ({ total, checked }) => {
             const percentage = total === 0 ? 0 : Math.round((checked / total) * 100);
-
             return (
                 <div className="fixed top-0 left-0 w-full z-50 bg-card/90 backdrop-blur-sm border-b border-slate-700 shadow-lg transition-all duration-300">
                     <div className="max-w-5xl mx-auto px-4 py-3 flex items-center gap-4">
@@ -238,7 +237,6 @@
         };
 
         const AlbumCard = ({ collection, tracks, checks, onToggleTrack }) => {
-            // Sort tracks by track number
             const sortedTracks = useMemo(() => {
                 return [...tracks].sort((a, b) => a.trackNumber - b.trackNumber);
             }, [tracks]);
@@ -270,7 +268,6 @@
                             <p className="text-sm text-slate-400">{sortedTracks.length} Songs</p>
                         </div>
                     </div>
-
                     <div className="p-3 grid gap-2">
                         {sortedTracks.map(track => (
                             <TrackItem
@@ -287,7 +284,8 @@
 
         const App = () => {
             const [data, setData] = useState({ artist: null, albums: {}, singles: [] });
-            const [items, setItems] = useState([]); // Raw items
+            // items unused in rendering but used for progress calc
+            const [items, setItems] = useState([]);
             const [checkedItems, setCheckedItems] = useLocalStorage('music-tracker-checks', {});
             const [favorites, setFavorites] = useLocalStorage('music-tracker-favorites', []);
             const [isLoading, setIsLoading] = useState(false);
@@ -300,9 +298,7 @@
                 setItems([]);
 
                 try {
-                    // JSONP + JP Store settings
-
-                    // 1. Search Artist
+                    // JSONP search with JP store
                     const artistRes = await fetchJsonp(`https://itunes.apple.com/search?term=${encodeURIComponent(term)}&entity=musicArtist&limit=5&country=JP&lang=ja_jp`);
                     const artistData = await artistRes.json();
 
@@ -312,7 +308,6 @@
 
                     const artist = artistData.results[0];
 
-                    // 2. Lookup Songs
                     const songsRes = await fetchJsonp(`https://itunes.apple.com/lookup?id=${artist.artistId}&entity=song&limit=200&country=JP&lang=ja_jp`);
                     const songsData = await songsRes.json();
 
@@ -341,7 +336,8 @@
 
                 } catch (err) {
                     console.error(err);
-                    setError('データの取得に失敗しました。');
+                    // Detailed error message for debugging
+                    setError(`Error: ${err.message || 'データ取得に失敗しました'}`);
                 } finally {
                     setIsLoading(false);
                 }
@@ -359,22 +355,17 @@
                 });
             };
 
-            // Favorites Logic
             const isFavorite = useMemo(() => {
                 return data.artist && favorites.some(f => f.artistId === data.artist.artistId);
             }, [data.artist, favorites]);
 
             const toggleFavorite = () => {
                 if (!data.artist) return;
-
                 setFavorites(prev => {
                     if (isFavorite) {
                         return prev.filter(f => f.artistId !== data.artist.artistId);
                     } else {
-                        return [...prev, {
-                            artistId: data.artist.artistId,
-                            artistName: data.artist.artistName
-                        }];
+                        return [...prev, { artistId: data.artist.artistId, artistName: data.artist.artistName }];
                     }
                 });
             };
@@ -383,7 +374,6 @@
                 setFavorites(prev => prev.filter(f => f.artistId !== id));
             };
 
-            // Calculate progress for CURRENT searched artist
             const progress = useMemo(() => {
                 if (items.length === 0) return { total: 0, checked: 0 };
                 const currentIds = items.map(i => i.trackId);
@@ -391,7 +381,6 @@
                 return { total: currentIds.length, checked: checkedCount };
             }, [items, checkedItems]);
 
-            // Sort albums by release date (desc)
             const sortedAlbums = useMemo(() => {
                 return Object.values(data.albums).sort((a, b) => {
                     return new Date(b.info.releaseDate) - new Date(a.info.releaseDate);
@@ -399,14 +388,13 @@
             }, [data.albums]);
 
             return (
-                <div className="min-h-screen pb-20 pt-16">
-                    {/* Progress Bar (Always visible if artist loaded) */}
+                <div className="min-h-screen pb-20 pt-16 relative">
                     {data.artist && (
                         <ProgressBar total={progress.total} checked={progress.checked} />
                     )}
 
                     <div className="max-w-5xl mx-auto px-4">
-                        {!data.artist && <div className="h-10"></div>} {/* Spacer */}
+                        {!data.artist && <div className="h-10"></div>}
 
                         <SearchBar
                             onSearch={searchArtist}
@@ -417,7 +405,7 @@
                         />
 
                         {error && (
-                            <div className="text-red-400 text-center bg-red-900/20 p-4 rounded-lg border border-red-900/50 mb-8">
+                            <div className="text-red-400 text-center bg-red-900/20 p-4 rounded-lg border border-red-900/50 mb-8 font-mono text-sm break-all">
                                 {error}
                             </div>
                         )}
@@ -433,7 +421,6 @@
                                                     ? 'text-yellow-400 bg-yellow-400/10 hover:bg-yellow-400/20'
                                                     : 'text-slate-500 bg-slate-800 hover:text-yellow-400 hover:bg-slate-700'
                                                 }`}
-                                            title={isFavorite ? "マイリストから削除" : "マイリストに追加"}
                                         >
                                             <Icons.Star filled={isFavorite} />
                                         </button>
@@ -455,7 +442,6 @@
                             </div>
                         )}
 
-                        {/* Empty State / Intro */}
                         {!data.artist && !isLoading && !error && (
                             <div className="text-center text-slate-600 mt-20">
                                 <Icons.Music />
@@ -464,7 +450,11 @@
                         )}
                     </div>
 
-                    {/* Masonry Layout CSS adjustment for columns */}
+                    {/* Version Indicator for Debugging */}
+                    <div className="fixed bottom-1 right-1 text-[10px] text-slate-700 opacity-50 pointer-events-none">
+                        v1.2 (JSONP Fixed)
+                    </div>
+
                     <style>{`
                         .masonry-grid {
                             column-count: 1;
